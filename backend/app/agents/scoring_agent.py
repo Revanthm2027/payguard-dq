@@ -106,6 +106,8 @@ class ScoringAgent:
         failing_checks = []
         metrics_summary = {}
         impacted_columns = set()
+        critical_fails = 0
+        high_fails = 0
         
         for check in checks:
             severity = check.get("severity", "medium")
@@ -117,8 +119,13 @@ class ScoringAgent:
             total_error_weight += error_rate * weight
             total_weight += weight
             
-            # Collect explainability data
+            # Collect explainability data and count failures by severity
             if not check.get("passed", True):
+                if severity == "critical":
+                    critical_fails += 1
+                elif severity == "high":
+                    high_fails += 1
+                    
                 failing_checks.append({
                     "check_id": check.get("check_id"),
                     "severity": severity,
@@ -136,9 +143,31 @@ class ScoringAgent:
             check_id = check.get("check_id", "unknown")
             metrics_summary[check_id] = self._extract_key_metrics(check)
         
-        # Compute score
+        # Calculate base score from error rates
         weighted_error_rate = total_error_weight / total_weight if total_weight > 0 else 0
-        score = max(0, 100 * (1 - weighted_error_rate))
+        base_score = max(0, 100 * (1 - weighted_error_rate))
+        
+        # Apply HARD PENALTIES for critical and high failures
+        if critical_fails >= 3:
+            base_score = min(base_score, 30)  # Cap at 30 for 3+ critical
+        elif critical_fails >= 2:
+            base_score = min(base_score, 45)  # Cap at 45 for 2 critical
+        elif critical_fails >= 1:
+            base_score = min(base_score, 60)  # Cap at 60 for 1 critical
+        
+        if high_fails >= 3:
+            base_score = min(base_score, 50)
+        elif high_fails >= 2:
+            base_score = min(base_score, 65)
+        
+        # Additional penalty for many failing checks
+        fail_ratio = len(failing_checks) / len(checks) if checks else 0
+        if fail_ratio > 0.5:
+            base_score *= 0.7  # 30% penalty
+        elif fail_ratio > 0.3:
+            base_score *= 0.85  # 15% penalty
+        
+        score = max(0, min(100, base_score))
         
         # Determine dimension weight based on criticality
         dim_weight = self._get_dimension_weight(dimension, profile)
@@ -148,8 +177,10 @@ class ScoringAgent:
             "weight": dim_weight,
             "explainability": {
                 "weighted_error_rate": round(weighted_error_rate, 4),
-                "formula": "score = max(0, 100 * (1 - weighted_error_rate))",
+                "formula": "score = max(0, 100 * (1 - weighted_error_rate)) with caps",
                 "total_checks": len(checks),
+                "critical_failures": critical_fails,
+                "high_failures": high_fails,
                 "failing_checks": failing_checks,
                 "metrics": metrics_summary,
                 "impacted_columns": list(impacted_columns),

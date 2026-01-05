@@ -101,7 +101,7 @@ export default function RunDetailPage() {
             const report = {
                 run_id: runDetail.run.run_id,
                 dataset: runDetail.run.dataset_name,
-                timestamp: runDetail.run.created_at || runDetail.run.timestamp,
+                timestamp: runDetail.run.timestamp,
                 composite_dqs: runDetail.scores.composite_dqs,
                 dimension_scores: runDetail.scores.dimension_scores,
                 checks: runDetail.checks,
@@ -111,8 +111,29 @@ export default function RunDetailPage() {
             const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
             downloadFile(blob, `quality_report_${runId}.json`);
         } else {
+            // Map dimension_scores array to object format
+            const dimensionScoresObj: Record<string, { score: number; weight: number }> = {};
+            if (Array.isArray(runDetail.scores?.dimension_scores)) {
+                runDetail.scores.dimension_scores.forEach((d: any) => {
+                    dimensionScoresObj[d.dimension] = { score: d.score, weight: d.weight };
+                });
+            }
+
+            // Map runDetail to report data structure
+            const reportData = {
+                run_id: runDetail.run.run_id,
+                dataset_name: runDetail.run.dataset_name,
+                row_count: runDetail.run.row_count,
+                column_count: runDetail.run.column_count,
+                composite_dqs: runDetail.scores?.composite_dqs ?? 0,
+                dimension_scores: dimensionScoresObj,
+                checks: runDetail.checks ?? [],
+                narrative: typeof runDetail.narrative === 'string' ? runDetail.narrative : (runDetail.narrative as any)?.summary ?? '',
+                remediation: runDetail.remediation,
+            };
+
             // Generate professional HTML report
-            const pdfContent = generateProfessionalReport(runDetail as any);
+            const pdfContent = generateProfessionalReport(reportData);
             const blob = new Blob([pdfContent], { type: 'text/html' });
             downloadFile(blob, `quality_report_${runId}.html`);
 
