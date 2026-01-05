@@ -147,25 +147,26 @@ class ScoringAgent:
         weighted_error_rate = total_error_weight / total_weight if total_weight > 0 else 0
         base_score = max(0, 100 * (1 - weighted_error_rate))
         
-        # Apply HARD PENALTIES for critical and high failures
-        if critical_fails >= 3:
-            base_score = min(base_score, 30)  # Cap at 30 for 3+ critical
-        elif critical_fails >= 2:
-            base_score = min(base_score, 45)  # Cap at 45 for 2 critical
-        elif critical_fails >= 1:
-            base_score = min(base_score, 60)  # Cap at 60 for 1 critical
-        
-        if high_fails >= 3:
-            base_score = min(base_score, 50)
-        elif high_fails >= 2:
-            base_score = min(base_score, 65)
-        
-        # Additional penalty for many failing checks
-        fail_ratio = len(failing_checks) / len(checks) if checks else 0
-        if fail_ratio > 0.5:
-            base_score *= 0.7  # 30% penalty
-        elif fail_ratio > 0.3:
-            base_score *= 0.85  # 15% penalty
+        # Only apply penalties if there are actual failures (more than 50% error rate)
+        if len(failing_checks) > 0:
+            # For critical failures with high error rates, apply caps
+            max_error = max([fc['error_rate'] for fc in failing_checks], default=0)
+            
+            if critical_fails >= 1 and max_error > 0.3:
+                # Only cap if significant error rate
+                if critical_fails >= 3 and max_error > 0.5:
+                    base_score = min(base_score, 30)
+                elif critical_fails >= 2 and max_error > 0.3:
+                    base_score = min(base_score, 50)
+                elif critical_fails >= 1 and max_error > 0.2:
+                    base_score = min(base_score, 65)
+            
+            # Penalty for many failing checks
+            fail_ratio = len(failing_checks) / len(checks) if checks else 0
+            if fail_ratio > 0.5:
+                base_score *= 0.7
+            elif fail_ratio > 0.3:
+                base_score *= 0.85
         
         score = max(0, min(100, base_score))
         
@@ -277,10 +278,21 @@ class ScoringAgent:
                                 dimension_scores: Dict[str, Dict[str, Any]],
                                 dimension_weights: Dict[str, float]) -> float:
         """
-        Compute risk-weighted composite DQS.
+        Compute risk-weighted composite DQS with balanced caps.
+        Penalizes bad data appropriately while not over-penalizing good data.
         """
+        if not dimension_scores:
+            return 0.0
+        
         total_weighted_score = 0
         total_weight = 0
+        min_score = 100
+        scores_below_50 = 0
+        scores_below_70 = 0
+        
+        # Critical dimensions
+        critical_dims = {'completeness', 'validity', 'uniqueness'}
+        critical_dim_failing = 0
         
         for dimension, score_data in dimension_scores.items():
             score = score_data["score"]
@@ -288,7 +300,50 @@ class ScoringAgent:
             
             total_weighted_score += score * weight
             total_weight += weight
+            
+            # Track minimum
+            if score < min_score:
+                min_score = score
+            
+            # Count problematic dimensions
+            if score < 50:
+                scores_below_50 += 1
+            if score < 70:
+                scores_below_70 += 1
+            
+            # Track critical dimension failures
+            if dimension in critical_dims and score < 60:
+                critical_dim_failing += 1
         
-        composite = total_weighted_score / total_weight if total_weight > 0 else 0
+        weighted_avg = total_weighted_score / total_weight if total_weight > 0 else 0
+        composite = weighted_avg
         
-        return round(composite, 2)
+        # Only apply caps if there are actually problematic dimensions
+        if scores_below_50 > 0:
+            # Has at least one very bad dimension
+            if min_score < 20:
+                composite = min(weighted_avg, 30)  # Terrible data
+            elif min_score < 40:
+                composite = min(weighted_avg, 45)  # Very bad data
+            elif min_score < 50:
+                composite = min(weighted_avg, 55)  # Bad data
+        
+        # Penalty for multiple critical dimension failures
+        if critical_dim_failing >= 3:
+            composite *= 0.5   # 50% penalty
+        elif critical_dim_failing >= 2:
+            composite *= 0.65  # 35% penalty
+        elif critical_dim_failing >= 1:
+            composite *= 0.8   # 20% penalty
+        
+        # For very bad data, blend towards minimum
+        if min_score < 30:
+            # Terrible data - heavily weight the minimum
+            composite = (composite * 0.3) + (min_score * 0.7)
+        elif min_score < 50 and scores_below_50 >= 2:
+            # Multiple bad dimensions
+            composite = (composite + min_score) / 2
+        
+        return round(max(0, min(100, composite)), 2)
+
+

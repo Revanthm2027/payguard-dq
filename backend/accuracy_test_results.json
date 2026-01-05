@@ -1,0 +1,50 @@
+{
+  "accuracy": 100.0,
+  "results": [
+    {
+      "name": "perfect_quality",
+      "expected": [
+        80,
+        100
+      ],
+      "actual": 90.75,
+      "passed": true
+    },
+    {
+      "name": "terrible_quality",
+      "expected": [
+        0,
+        35
+      ],
+      "actual": 14.76,
+      "passed": true
+    },
+    {
+      "name": "high_null_rate",
+      "expected": [
+        50,
+        90
+      ],
+      "actual": 80.92,
+      "passed": true
+    },
+    {
+      "name": "invalid_values",
+      "expected": [
+        50,
+        80
+      ],
+      "actual": 67.02,
+      "passed": true
+    },
+    {
+      "name": "stale_data",
+      "expected": [
+        20,
+        70
+      ],
+      "actual": 28.38,
+      "passed": true
+    }
+  ]
+}
