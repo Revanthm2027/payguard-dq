@@ -52,16 +52,19 @@ export default function Home() {
             {/* Navigation */}
             <nav className="fixed top-0 w-full bg-slate-950/80 backdrop-blur-lg border-b border-white/10 z-50">
                 <div className="container mx-auto px-6 py-4 flex justify-between items-center">
-                    <div className="text-xl font-bold">
-                        <span className="text-blue-400">PayGuard</span> DQ
-                    </div>
-                    <div className="flex gap-4">
+                    <a href="/" className="flex items-center gap-3 hover:opacity-90 transition-all hover:scale-105">
+                        <img src="/logo.png" alt="PayGuard DQ" className="w-12 h-12 rounded-xl shadow-lg" />
+                        <span className="text-2xl font-bold">
+                            <span className="text-blue-400">PayGuard</span> DQ
+                        </span>
+                    </a>
+                    <div className="flex items-center gap-6">
                         <a href="/runs" className="text-sm text-gray-400 hover:text-white transition-colors">
-                            History
+                            Dashboard
                         </a>
                         <button
                             onClick={() => setShowUpload(true)}
-                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors"
+                            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-all btn-glow hover:scale-105"
                         >
                             Start Analysis
                         </button>
@@ -72,12 +75,12 @@ export default function Home() {
             {/* Hero Section */}
             <section className="pt-32 pb-20 px-6">
                 <div className="container mx-auto max-w-4xl text-center">
-                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-500/10 border border-blue-500/30 rounded-full text-blue-400 text-sm mb-8">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-500/10 border border-blue-500/30 rounded-full text-blue-400 text-sm mb-8 animate-fade-in-up">
                         <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
                         GenAI-Powered Quality Scoring
                     </div>
 
-                    <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
+                    <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
                         Data Quality Scoring
                         <br />
                         <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400">
@@ -85,21 +88,21 @@ export default function Home() {
                         </span>
                     </h1>
 
-                    <p className="text-xl text-gray-400 mb-10 max-w-2xl mx-auto leading-relaxed">
+                    <p className="text-xl text-gray-400 mb-10 max-w-2xl mx-auto leading-relaxed animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
                         Upload your payment transaction data and get an instant quality score across 7 dimensions.
                         No raw data stored. Full explainability. Actionable remediation.
                     </p>
 
-                    <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                    <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
                         <button
                             onClick={() => setShowUpload(true)}
-                            className="px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-xl text-lg font-semibold transition-all transform hover:scale-105 shadow-lg shadow-blue-500/25"
+                            className="px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-xl text-lg font-semibold transition-all transform hover:scale-105 shadow-lg shadow-blue-500/25 btn-glow"
                         >
                             🚀 Analyze Your Data
                         </button>
                         <a
                             href="#how-it-works"
-                            className="px-8 py-4 bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl text-lg font-semibold transition-all"
+                            className="px-8 py-4 bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl text-lg font-semibold transition-all hover:scale-105"
                         >
                             Learn More ↓
                         </a>
@@ -449,6 +452,34 @@ export default function Home() {
                     </div>
                 </div>
             )}
+
+            {/* Footer */}
+            <footer className="bg-slate-900 border-t border-white/10 py-12 px-6">
+                <div className="container mx-auto max-w-5xl">
+                    <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+                        <div className="flex items-center gap-4">
+                            <img src="/logo.png" alt="PayGuard DQ" className="w-12 h-12 rounded-xl" />
+                            <div>
+                                <span className="text-xl font-bold">
+                                    <span className="text-blue-400">PayGuard</span> DQ
+                                </span>
+                                <p className="text-gray-500 text-sm">AI-Powered Data Quality for Payments</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-6 text-sm text-gray-400">
+                            <span>🤖 Gemini AI</span>
+                            <span>🧠 ML Anomaly Detection</span>
+                            <span className="flex items-center gap-2">
+                                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                                Zero Data Storage
+                            </span>
+                        </div>
+                    </div>
+                    <div className="border-t border-white/10 mt-8 pt-8 text-center text-gray-500 text-sm">
+                        © 2026 PayGuard DQ • Built for VISA Hackathon Finals
+                    </div>
+                </div>
+            </footer>
         </div>
     );
 }
