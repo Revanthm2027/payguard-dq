@@ -16,8 +16,19 @@ export default function Home() {
         settlement_ledger?: File;
     }>({});
     const [uploading, setUploading] = useState(false);
+    const [currentAgent, setCurrentAgent] = useState(0);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+
+    const agents = [
+        { name: 'Profiler Agent', desc: 'Analyzing schema and statistics' },
+        { name: 'Dimension Selector', desc: 'Identifying quality dimensions' },
+        { name: 'Check Executor', desc: 'Running validation checks' },
+        { name: 'Scoring Agent', desc: 'Computing dimension scores' },
+        { name: 'Explainer Agent', desc: 'Generating explanations' },
+        { name: 'Remediation Agent', desc: 'Creating fix recommendations' },
+        { name: 'Test Export Agent', desc: 'Generating test artifacts' },
+    ];
 
     const handleDatasetUpload = async () => {
         if (!datasetFile) {
@@ -28,6 +39,12 @@ export default function Home() {
         setUploading(true);
         setError('');
         setSuccess('');
+        setCurrentAgent(0);
+
+        // Simulate agent progress
+        const progressInterval = setInterval(() => {
+            setCurrentAgent(prev => Math.min(prev + 1, 6));
+        }, 800);
 
         try {
             for (const [type, file] of Object.entries(referenceFiles)) {
@@ -36,35 +53,82 @@ export default function Home() {
                 }
             }
             const result = await apiClient.ingestDataset(datasetFile, datasetName);
-            setSuccess(`Success! Redirecting to results...`);
+            clearInterval(progressInterval);
+            setCurrentAgent(7);
+            setSuccess(`Analysis complete. Redirecting to results...`);
             setTimeout(() => {
                 router.push(`/runs/${result.run_id}`);
             }, 1500);
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Upload failed. Please try again.');
+            clearInterval(progressInterval);
+            setError(err.response?.data?.detail || 'Analysis failed. Please check your file format and try again.');
         } finally {
             setUploading(false);
         }
     };
 
+    const sampleDataFiles = [
+        { name: 'transactions_batch1.csv', desc: 'Good quality sample (1,000 transactions)' },
+        { name: 'transactions_batch2.csv', desc: 'Poor quality sample with issues' },
+        { name: 'bin_reference.csv', desc: 'Card BIN reference data' },
+        { name: 'currency_rules.csv', desc: 'Currency decimal rules' },
+        { name: 'mcc_codes.csv', desc: 'Merchant category codes' },
+    ];
+
+    const handleDownloadSample = async (filename: string) => {
+        try {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/sample-data/${filename}`);
+            if (!response.ok) throw new Error('Download failed');
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Download failed:', error);
+            alert('Failed to download file. Please try again.');
+        }
+    };
+
+    const dimensions = [
+        { name: 'Completeness', desc: 'Missing values and null rates', icon: '📋' },
+        { name: 'Uniqueness', desc: 'Duplicate detection', icon: '🔑' },
+        { name: 'Validity', desc: 'ISO codes and format validation', icon: '✓' },
+        { name: 'Consistency', desc: 'Cross-field rule validation', icon: '🔗' },
+        { name: 'Timeliness', desc: 'SLA and processing delays', icon: '⏱' },
+        { name: 'Integrity', desc: 'Referential data matching', icon: '🔒' },
+        { name: 'Reconciliation', desc: 'BIN and settlement matching', icon: '💳' },
+    ];
+
     return (
-        <div className="min-h-screen bg-slate-950 text-white">
+        <div className="min-h-screen bg-white text-gray-900">
             {/* Navigation */}
-            <nav className="fixed top-0 w-full bg-slate-950/80 backdrop-blur-lg border-b border-white/10 z-50">
+            <nav className="fixed top-0 w-full bg-white border-b border-gray-200 z-50 shadow-sm">
                 <div className="container mx-auto px-6 py-4 flex justify-between items-center">
-                    <a href="/" className="flex items-center gap-3 hover:opacity-90 transition-all hover:scale-105">
-                        <img src="/logo.png" alt="PayGuard DQ" className="w-12 h-12 rounded-xl shadow-lg" />
-                        <span className="text-2xl font-bold">
-                            <span className="text-blue-400">PayGuard</span> DQ
-                        </span>
+                    <a href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+                        <img src="/logo.png" alt="PayGuard DQ" className="w-10 h-10 rounded-lg" />
+                        <span className="text-xl font-semibold text-gray-900">PayGuard DQ</span>
                     </a>
                     <div className="flex items-center gap-6">
-                        <a href="/runs" className="text-sm text-gray-400 hover:text-white transition-colors">
+                        <a href="/" className="text-sm text-gray-600 hover:text-[#1434CB] transition-colors">
+                            Home
+                        </a>
+                        <a href="#features" className="text-sm text-gray-600 hover:text-[#1434CB] transition-colors">
+                            Features
+                        </a>
+                        <a href="#architecture" className="text-sm text-gray-600 hover:text-[#1434CB] transition-colors">
+                            Architecture
+                        </a>
+                        <a href="/runs" className="text-sm text-gray-600 hover:text-[#1434CB] transition-colors">
                             Dashboard
                         </a>
                         <button
                             onClick={() => setShowUpload(true)}
-                            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-all btn-glow hover:scale-105"
+                            className="px-5 py-2.5 bg-[#1434CB] hover:bg-[#0C1F7A] text-white rounded-lg text-sm font-medium transition-colors"
                         >
                             Start Analysis
                         </button>
@@ -73,137 +137,94 @@ export default function Home() {
             </nav>
 
             {/* Hero Section */}
-            <section className="pt-32 pb-20 px-6">
-                <div className="container mx-auto max-w-4xl text-center">
-                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-500/10 border border-blue-500/30 rounded-full text-blue-400 text-sm mb-8 animate-fade-in-up">
-                        <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                        GenAI-Powered Quality Scoring
+            <section className="pt-32 pb-20 px-6 bg-gradient-to-b from-gray-50 to-white">
+                <div className="container mx-auto max-w-5xl">
+                    <div className="text-center">
+                        <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#1434CB]/5 border border-[#1434CB]/20 rounded-full text-[#1434CB] text-sm font-medium mb-8">
+                            <span className="w-2 h-2 bg-[#FCC116] rounded-full"></span>
+                            Enterprise Data Quality Platform
+                        </div>
+
+                        <h1 className="text-5xl md:text-6xl font-bold mb-6 leading-tight text-gray-900">
+                            AI-Powered Data Quality
+                            <br />
+                            <span className="text-[#1434CB]">for Payment Transactions</span>
+                        </h1>
+
+                        <p className="text-xl text-gray-600 mb-10 max-w-3xl mx-auto leading-relaxed">
+                            Validate card transaction data across 7 quality dimensions using 7 specialized AI agents.
+                            Catch compliance issues before they cost you. Zero raw data storage.
+                        </p>
+
+                        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                            <button
+                                onClick={() => setShowUpload(true)}
+                                className="px-8 py-4 bg-[#1434CB] hover:bg-[#0C1F7A] text-white rounded-xl text-lg font-semibold transition-all shadow-lg shadow-[#1434CB]/20"
+                            >
+                                Analyze Your Data
+                            </button>
+                            <a
+                                href="#sample-data"
+                                className="px-8 py-4 bg-white hover:bg-gray-50 border-2 border-[#FCC116] text-gray-900 rounded-xl text-lg font-semibold transition-all"
+                            >
+                                Download Sample Data
+                            </a>
+                        </div>
                     </div>
 
-                    <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
-                        Data Quality Scoring
-                        <br />
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400">
-                            for Payments
-                        </span>
-                    </h1>
-
-                    <p className="text-xl text-gray-400 mb-10 max-w-2xl mx-auto leading-relaxed animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-                        Upload your payment transaction data and get an instant quality score across 7 dimensions.
-                        No raw data stored. Full explainability. Actionable remediation.
-                    </p>
-
-                    <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
-                        <button
-                            onClick={() => setShowUpload(true)}
-                            className="px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-xl text-lg font-semibold transition-all transform hover:scale-105 shadow-lg shadow-blue-500/25 btn-glow"
-                        >
-                            🚀 Analyze Your Data
-                        </button>
-                        <a
-                            href="#how-it-works"
-                            className="px-8 py-4 bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl text-lg font-semibold transition-all hover:scale-105"
-                        >
-                            Learn More ↓
-                        </a>
+                    {/* Stats Bar */}
+                    <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-6">
+                        <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm text-center">
+                            <div className="text-4xl font-bold text-[#1434CB] mb-2">7</div>
+                            <div className="text-sm text-gray-600">AI Agents</div>
+                        </div>
+                        <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm text-center">
+                            <div className="text-4xl font-bold text-[#1434CB] mb-2">7</div>
+                            <div className="text-sm text-gray-600">Quality Dimensions</div>
+                        </div>
+                        <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm text-center">
+                            <div className="text-4xl font-bold text-[#1434CB] mb-2">20+</div>
+                            <div className="text-sm text-gray-600">Validation Checks</div>
+                        </div>
+                        <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm text-center">
+                            <div className="text-4xl font-bold text-[#1434CB] mb-2">&lt;30s</div>
+                            <div className="text-sm text-gray-600">Processing Time</div>
+                        </div>
                     </div>
                 </div>
             </section>
 
-            {/* The Problem Section */}
-            <section className="py-20 px-6 bg-gradient-to-b from-slate-950 to-slate-900">
+            {/* Sample Data Download Section */}
+            <section id="sample-data" className="py-20 px-6 bg-white">
                 <div className="container mx-auto max-w-5xl">
                     <div className="text-center mb-12">
-                        <h2 className="text-3xl font-bold mb-4">The Problem</h2>
-                        <p className="text-gray-400 max-w-2xl mx-auto">
-                            Payment data quality issues cost financial institutions billions annually
+                        <h2 className="text-3xl font-bold text-gray-900 mb-4">Sample Data</h2>
+                        <p className="text-gray-600 max-w-2xl mx-auto">
+                            Download sample transaction files to test the platform
                         </p>
                     </div>
 
                     <div className="grid md:grid-cols-3 gap-6">
-                        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-6">
-                            <div className="text-4xl mb-4">❌</div>
-                            <h3 className="text-lg font-semibold mb-2">Manual Reviews</h3>
-                            <p className="text-sm text-gray-400">
-                                Data quality checks are done manually, taking days to complete and missing critical issues
-                            </p>
-                        </div>
-                        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-6">
-                            <div className="text-4xl mb-4">❌</div>
-                            <h3 className="text-lg font-semibold mb-2">Inconsistent Scoring</h3>
-                            <p className="text-sm text-gray-400">
-                                Different teams use different criteria, making it impossible to benchmark quality
-                            </p>
-                        </div>
-                        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-6">
-                            <div className="text-4xl mb-4">❌</div>
-                            <h3 className="text-lg font-semibold mb-2">No Explainability</h3>
-                            <p className="text-sm text-gray-400">
-                                When issues are found, there's no clear explanation of what failed and why
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            {/* The Solution Section */}
-            <section className="py-20 px-6 bg-slate-900">
-                <div className="container mx-auto max-w-5xl">
-                    <div className="text-center mb-12">
-                        <h2 className="text-3xl font-bold mb-4">The Solution: PayGuard DQ</h2>
-                        <p className="text-gray-400 max-w-2xl mx-auto">
-                            An AI-powered multi-agent system that scores payment data quality in seconds
-                        </p>
-                    </div>
-
-                    <div className="grid md:grid-cols-3 gap-6">
-                        <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-6">
-                            <div className="text-4xl mb-4">✅</div>
-                            <h3 className="text-lg font-semibold mb-2">Automated Analysis</h3>
-                            <p className="text-sm text-gray-400">
-                                7 specialized AI agents analyze your data in seconds, not days
-                            </p>
-                        </div>
-                        <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-6">
-                            <div className="text-4xl mb-4">✅</div>
-                            <h3 className="text-lg font-semibold mb-2">Universal Scoring</h3>
-                            <p className="text-sm text-gray-400">
-                                Consistent 0-100 scores across 7 dimensions for any payment dataset
-                            </p>
-                        </div>
-                        <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-6">
-                            <div className="text-4xl mb-4">✅</div>
-                            <h3 className="text-lg font-semibold mb-2">Full Explainability</h3>
-                            <p className="text-sm text-gray-400">
-                                Every score includes metrics, error rates, and actionable remediation steps
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            {/* How It Works Section */}
-            <section id="how-it-works" className="py-20 px-6 bg-gradient-to-b from-slate-900 to-slate-950">
-                <div className="container mx-auto max-w-5xl">
-                    <div className="text-center mb-12">
-                        <h2 className="text-3xl font-bold mb-4">How It Works</h2>
-                        <p className="text-gray-400">Four simple steps to quality insights</p>
-                    </div>
-
-                    <div className="grid md:grid-cols-4 gap-8">
-                        {[
-                            { step: 1, icon: '📤', title: 'Upload', desc: 'Upload your payment CSV file (processed in-memory, never stored)' },
-                            { step: 2, icon: '🤖', title: 'Analyze', desc: '7 AI agents profile schema, run 20+ checks across all dimensions' },
-                            { step: 3, icon: '📊', title: 'Score', desc: 'Get per-dimension scores (0-100) with risk-weighted composite DQS' },
-                            { step: 4, icon: '🔧', title: 'Remediate', desc: 'View prioritized issues with fix steps & export to dbt/GE' },
-                        ].map((item) => (
-                            <div key={item.step} className="text-center">
-                                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 shadow-lg shadow-blue-500/25">
-                                    {item.icon}
+                        {sampleDataFiles.map((file) => (
+                            <div key={file.name} className="bg-gray-50 rounded-xl p-6 border border-gray-200 hover:border-[#1434CB]/50 transition-colors">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <div className="w-10 h-10 bg-[#1434CB]/10 rounded-lg flex items-center justify-center">
+                                        <span className="text-[#1434CB]">📄</span>
+                                    </div>
+                                    <div>
+                                        <h3 className="font-semibold text-gray-900">{file.name}</h3>
+                                        <p className="text-sm text-gray-500">{file.desc}</p>
+                                    </div>
                                 </div>
-                                <div className="text-sm text-blue-400 font-medium mb-2">Step {item.step}</div>
-                                <h3 className="text-lg font-semibold mb-2">{item.title}</h3>
-                                <p className="text-sm text-gray-400">{item.desc}</p>
+                                <button
+                                    onClick={() => handleDownloadSample(file.name)}
+                                    className="w-full mt-4 px-4 py-2 bg-white border border-gray-300 hover:border-[#1434CB] text-gray-700 hover:text-[#1434CB] rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                    </svg>
+                                    Download
+                                </button>
                             </div>
                         ))}
                     </div>
@@ -211,275 +232,305 @@ export default function Home() {
             </section>
 
             {/* 7 Dimensions Section */}
-            <section className="py-20 px-6 bg-slate-950">
+            <section id="features" className="py-20 px-6 bg-gray-50">
                 <div className="container mx-auto max-w-5xl">
                     <div className="text-center mb-12">
-                        <h2 className="text-3xl font-bold mb-4">7 Quality Dimensions</h2>
-                        <p className="text-gray-400">Comprehensive coverage for payment data</p>
+                        <h2 className="text-3xl font-bold text-gray-900 mb-4">7 Quality Dimensions</h2>
+                        <p className="text-gray-600 max-w-2xl mx-auto">
+                            Comprehensive validation coverage for payment transaction data
+                        </p>
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {[
-                            { icon: '📝', name: 'Completeness', desc: 'Missing & null values', color: 'from-blue-500/20 to-blue-600/10 border-blue-500/30' },
-                            { icon: '🔑', name: 'Uniqueness', desc: 'Duplicate detection', color: 'from-purple-500/20 to-purple-600/10 border-purple-500/30' },
-                            { icon: '✅', name: 'Validity', desc: 'ISO codes & formats', color: 'from-green-500/20 to-green-600/10 border-green-500/30' },
-                            { icon: '🔗', name: 'Consistency', desc: 'Cross-field rules', color: 'from-yellow-500/20 to-yellow-600/10 border-yellow-500/30' },
-                            { icon: '⏱️', name: 'Timeliness', desc: 'SLA compliance', color: 'from-orange-500/20 to-orange-600/10 border-orange-500/30' },
-                            { icon: '🔒', name: 'Integrity', desc: 'Reference matches', color: 'from-pink-500/20 to-pink-600/10 border-pink-500/30' },
-                            { icon: '💰', name: 'Reconciliation', desc: 'Settlement matching', color: 'from-cyan-500/20 to-cyan-600/10 border-cyan-500/30', badge: 'Payments' },
-                            { icon: '🎯', name: 'Composite DQS', desc: 'Risk-weighted score', color: 'from-indigo-500/20 to-indigo-600/10 border-indigo-500/30' },
-                        ].map((dim) => (
-                            <div key={dim.name} className={`bg-gradient-to-br ${dim.color} rounded-xl p-5 border relative`}>
-                                {dim.badge && (
-                                    <span className="absolute top-2 right-2 text-[10px] bg-cyan-500 text-white px-2 py-0.5 rounded-full">
-                                        {dim.badge}
-                                    </span>
-                                )}
-                                <div className="text-3xl mb-3">{dim.icon}</div>
-                                <h3 className="text-sm font-semibold mb-1">{dim.name}</h3>
-                                <p className="text-xs text-gray-400">{dim.desc}</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+                        {dimensions.map((dim, i) => (
+                            <div
+                                key={dim.name}
+                                className="bg-white rounded-xl p-4 border border-gray-200 hover:border-[#1434CB]/50 hover:shadow-md transition-all text-center group"
+                            >
+                                <div className="text-2xl mb-2">{dim.icon}</div>
+                                <h3 className="text-sm font-semibold text-gray-900 mb-1">{dim.name}</h3>
+                                <p className="text-xs text-gray-500">{dim.desc}</p>
                             </div>
                         ))}
                     </div>
                 </div>
             </section>
 
-            {/* 7 Agents Section */}
-            <section className="py-20 px-6 bg-gradient-to-b from-slate-950 to-slate-900">
+            {/* Architecture Section */}
+            <section id="architecture" className="py-20 px-6 bg-white">
                 <div className="container mx-auto max-w-5xl">
                     <div className="text-center mb-12">
-                        <h2 className="text-3xl font-bold mb-4">7 Specialized AI Agents</h2>
-                        <p className="text-gray-400">Each agent has a single responsibility</p>
+                        <h2 className="text-3xl font-bold text-gray-900 mb-4">Multi-Agent Architecture</h2>
+                        <p className="text-gray-600 max-w-2xl mx-auto">
+                            7 specialized AI agents work in sequence to analyze your data
+                        </p>
                     </div>
 
-                    <div className="relative">
-                        <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-gradient-to-b from-blue-500 to-purple-500 hidden md:block"></div>
-
-                        <div className="space-y-6">
-                            {[
-                                { name: 'Profiler Agent', desc: 'Analyzes schema and computes aggregate statistics (null rates, cardinality, types)', icon: '🔍' },
-                                { name: 'Dimension Selector', desc: 'Automatically identifies which quality dimensions apply to your dataset', icon: '🎯' },
-                                { name: 'Check Executor', desc: 'Runs 20+ checks across all selected dimensions with severity levels', icon: '⚙️' },
-                                { name: 'Scoring Agent', desc: 'Computes per-dimension scores (0-100) and risk-weighted composite DQS', icon: '📊' },
-                                { name: 'Explainer Agent', desc: 'Generates human-readable narratives explaining scores and issues', icon: '📝' },
-                                { name: 'Remediation Agent', desc: 'Creates prioritized fix recommendations with expected score gains', icon: '🔧' },
-                                { name: 'Test Export Agent', desc: 'Generates dbt tests and Great Expectations suites for CI/CD', icon: '📦' },
-                            ].map((agent, i) => (
-                                <div key={agent.name} className={`flex items-center gap-6 ${i % 2 === 0 ? 'md:flex-row' : 'md:flex-row-reverse'}`}>
-                                    <div className={`flex-1 bg-white/5 rounded-xl p-6 border border-white/10 ${i % 2 === 0 ? 'md:text-right' : 'md:text-left'}`}>
-                                        <h3 className="text-lg font-semibold mb-2">{agent.name}</h3>
-                                        <p className="text-sm text-gray-400">{agent.desc}</p>
+                    {/* Agent Pipeline Visualization */}
+                    <div className="bg-gray-50 rounded-2xl p-8 border border-gray-200">
+                        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                            {agents.map((agent, i) => (
+                                <div key={agent.name} className="flex items-center gap-2">
+                                    <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm text-center min-w-[120px]">
+                                        <div className="w-10 h-10 bg-[#1434CB] rounded-full flex items-center justify-center text-white font-bold mx-auto mb-2">
+                                            {i + 1}
+                                        </div>
+                                        <h4 className="text-xs font-semibold text-gray-900">{agent.name}</h4>
                                     </div>
-                                    <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-purple-600 rounded-full flex items-center justify-center text-2xl shadow-lg shrink-0 z-10">
-                                        {agent.icon}
-                                    </div>
-                                    <div className="flex-1 hidden md:block"></div>
+                                    {i < agents.length - 1 && (
+                                        <div className="hidden md:block text-[#1434CB] text-2xl">→</div>
+                                    )}
                                 </div>
                             ))}
+                        </div>
+
+                        <div className="mt-8 grid md:grid-cols-3 gap-6">
+                            <div className="bg-white rounded-xl p-5 border border-gray-200">
+                                <div className="text-[#1434CB] font-semibold mb-2">Input</div>
+                                <p className="text-sm text-gray-600">CSV transaction file + optional reference data</p>
+                            </div>
+                            <div className="bg-white rounded-xl p-5 border border-gray-200">
+                                <div className="text-[#1434CB] font-semibold mb-2">Processing</div>
+                                <p className="text-sm text-gray-600">In-memory analysis, zero raw data storage</p>
+                            </div>
+                            <div className="bg-white rounded-xl p-5 border border-gray-200">
+                                <div className="text-[#1434CB] font-semibold mb-2">Output</div>
+                                <p className="text-sm text-gray-600">Scores, remediation, dbt/GE exports</p>
+                            </div>
                         </div>
                     </div>
                 </div>
             </section>
 
             {/* Key Features Section */}
-            <section className="py-20 px-6 bg-slate-900">
+            <section className="py-20 px-6 bg-gray-50">
                 <div className="container mx-auto max-w-5xl">
                     <div className="text-center mb-12">
-                        <h2 className="text-3xl font-bold mb-4">Key Features</h2>
+                        <h2 className="text-3xl font-bold text-gray-900 mb-4">Enterprise Features</h2>
                     </div>
 
-                    <div className="grid md:grid-cols-2 gap-6">
-                        <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border border-emerald-500/30 rounded-xl p-8">
-                            <div className="text-5xl mb-4">🔒</div>
-                            <h3 className="text-xl font-bold mb-3">Zero Raw Data Storage</h3>
-                            <p className="text-gray-400 mb-4">Your transaction data is processed in-memory only. We store only metadata, scores, and aggregates. Never raw data. Never PII.</p>
-                            <ul className="text-sm text-emerald-400 space-y-1">
-                                <li>✓ GDPR compliant</li>
-                                <li>✓ No data retention</li>
-                                <li>✓ Governance reports included</li>
-                            </ul>
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
+                                <span className="text-2xl">🔒</span>
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Zero Data Storage</h3>
+                            <p className="text-gray-600 text-sm">Transaction data processed in-memory only. Never stored. PCI-DSS compliant by design.</p>
                         </div>
 
-                        <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 border border-blue-500/30 rounded-xl p-8">
-                            <div className="text-5xl mb-4">🧠</div>
-                            <h3 className="text-xl font-bold mb-3">Full Explainability</h3>
-                            <p className="text-gray-400 mb-4">Every score comes with detailed breakdowns. Know exactly what failed, where, and why.</p>
-                            <ul className="text-sm text-blue-400 space-y-1">
-                                <li>✓ Metrics & error rates</li>
-                                <li>✓ Failing check details</li>
-                                <li>✓ Impacted columns</li>
-                            </ul>
+                        <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                                <span className="text-2xl">📊</span>
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Full Explainability</h3>
+                            <p className="text-gray-600 text-sm">Every score includes metrics, error rates, and root cause analysis. No black boxes.</p>
                         </div>
 
-                        <div className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 border border-purple-500/30 rounded-xl p-8">
-                            <div className="text-5xl mb-4">💰</div>
-                            <h3 className="text-xl font-bold mb-3">Payments-Specific</h3>
-                            <p className="text-gray-400 mb-4">Built specifically for payment transaction data with specialized reconciliation checks.</p>
-                            <ul className="text-sm text-purple-400 space-y-1">
-                                <li>✓ BIN map validation</li>
-                                <li>✓ Settlement ledger matching</li>
-                                <li>✓ Currency decimal rules</li>
-                            </ul>
+                        <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                            <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center mb-4">
+                                <span className="text-2xl">💳</span>
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Payment-Specific</h3>
+                            <p className="text-gray-600 text-sm">BIN validation, settlement matching, currency compliance. Built for card transactions.</p>
                         </div>
 
-                        <div className="bg-gradient-to-br from-orange-500/10 to-orange-600/5 border border-orange-500/30 rounded-xl p-8">
-                            <div className="text-5xl mb-4">📦</div>
-                            <h3 className="text-xl font-bold mb-3">Export to CI/CD</h3>
-                            <p className="text-gray-400 mb-4">Generate test artifacts for your existing data quality infrastructure.</p>
-                            <ul className="text-sm text-orange-400 space-y-1">
-                                <li>✓ dbt schema tests YAML</li>
-                                <li>✓ Great Expectations JSON</li>
-                                <li>✓ Jira ticket payloads</li>
-                            </ul>
+                        <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
+                                <span className="text-2xl">📦</span>
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">CI/CD Exports</h3>
+                            <p className="text-gray-600 text-sm">Export to dbt tests and Great Expectations. Integrate with your existing pipeline.</p>
+                        </div>
+
+                        <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                            <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center mb-4">
+                                <span className="text-2xl">🔧</span>
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Remediation</h3>
+                            <p className="text-gray-600 text-sm">Prioritized fix recommendations with expected score impact and effort estimates.</p>
+                        </div>
+
+                        <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                            <div className="w-12 h-12 bg-cyan-100 rounded-lg flex items-center justify-center mb-4">
+                                <span className="text-2xl">📋</span>
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Governance Reports</h3>
+                            <p className="text-gray-600 text-sm">Audit-ready reports proving no raw data retention. Full compliance documentation.</p>
                         </div>
                     </div>
                 </div>
             </section>
 
             {/* CTA Section */}
-            <section className="py-20 px-6 bg-gradient-to-b from-slate-900 to-slate-950">
+            <section className="py-20 px-6 bg-[#1434CB]">
                 <div className="container mx-auto max-w-3xl text-center">
-                    <h2 className="text-4xl font-bold mb-6">Ready to Score Your Data?</h2>
-                    <p className="text-xl text-gray-400 mb-8">
-                        Upload your payment transaction CSV and get instant quality insights
+                    <h2 className="text-4xl font-bold text-white mb-6">Ready to Validate Your Data?</h2>
+                    <p className="text-xl text-blue-100 mb-8">
+                        Upload your transaction file and get a comprehensive quality assessment in seconds
                     </p>
                     <button
                         onClick={() => setShowUpload(true)}
-                        className="px-10 py-5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-xl text-xl font-semibold transition-all transform hover:scale-105 shadow-xl shadow-blue-500/25"
+                        className="px-10 py-5 bg-[#FCC116] hover:bg-[#D9A312] text-gray-900 rounded-xl text-xl font-semibold transition-all shadow-xl"
                     >
-                        🚀 Start Free Analysis
+                        Start Analysis
                     </button>
-                    <p className="text-sm text-gray-500 mt-4">No signup required • No data stored</p>
                 </div>
             </section>
 
             {/* Footer */}
-            <footer className="py-8 px-6 border-t border-white/10">
-                <div className="container mx-auto max-w-5xl text-center text-gray-500 text-sm">
-                    <p>Built with ❤️ for Hackathon 2024</p>
-                    <p className="mt-2">Python FastAPI • Next.js • 7 Agents • 7 Dimensions • 10,500+ LOC</p>
+            <footer className="py-8 px-6 bg-gray-900 text-gray-400">
+                <div className="container mx-auto max-w-5xl flex flex-col md:flex-row justify-between items-center gap-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-[#1434CB] rounded-lg flex items-center justify-center">
+                            <span className="text-white font-bold text-sm">PG</span>
+                        </div>
+                        <span className="text-white font-semibold">PayGuard DQ</span>
+                    </div>
+                    <div className="text-sm">
+                        Enterprise Data Quality Platform for Payment Transactions
+                    </div>
                 </div>
             </footer>
 
-            {/* Upload Modal */}
+            {/* Upload Modal with Agent Progress */}
             {showUpload && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-slate-900 border border-white/20 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                        <div className="p-6 border-b border-white/10 flex justify-between items-center">
-                            <h2 className="text-xl font-bold">Analyze Dataset</h2>
-                            <button onClick={() => setShowUpload(false)} className="text-gray-400 hover:text-white text-2xl">&times;</button>
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+                        <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+                            <h2 className="text-xl font-bold text-gray-900">Analyze Transaction Data</h2>
+                            <button onClick={() => setShowUpload(false)} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
                         </div>
 
                         <div className="p-6 space-y-6">
-                            {/* Dataset Upload */}
-                            <div>
-                                <label className="block text-sm font-medium mb-2">
-                                    Transaction Dataset (CSV) <span className="text-red-400">*</span>
-                                </label>
-                                <input
-                                    type="file"
-                                    accept=".csv"
-                                    onChange={(e) => setDatasetFile(e.target.files?.[0] || null)}
-                                    className="w-full px-4 py-4 bg-white/5 border-2 border-dashed border-white/30 rounded-lg focus:border-blue-500 cursor-pointer"
-                                />
-                                {datasetFile && <p className="text-green-400 text-sm mt-2">✓ {datasetFile.name}</p>}
-                            </div>
-
-                            {/* Dataset Name */}
-                            <div>
-                                <label className="block text-sm font-medium mb-2">Dataset Name (optional)</label>
-                                <input
-                                    type="text"
-                                    value={datasetName}
-                                    onChange={(e) => setDatasetName(e.target.value)}
-                                    placeholder="e.g., Q4_2024_Transactions"
-                                    className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg focus:border-blue-500 focus:outline-none"
-                                />
-                            </div>
-
-                            {/* Reference Files */}
-                            <details className="group">
-                                <summary className="cursor-pointer p-4 bg-white/5 rounded-lg border border-white/10 hover:bg-white/10 list-none">
-                                    <div className="flex justify-between items-center">
-                                        <span className="font-medium">📚 Reference Data (Optional)</span>
-                                        <span className="text-sm text-gray-400 group-open:hidden">Click to expand</span>
+                            {/* Agent Progress (when uploading) */}
+                            {uploading && (
+                                <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                                    <h3 className="font-semibold text-gray-900 mb-4">Processing Pipeline</h3>
+                                    <div className="space-y-3">
+                                        {agents.map((agent, i) => (
+                                            <div key={agent.name} className="flex items-center gap-3">
+                                                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${i < currentAgent ? 'bg-green-500 text-white' :
+                                                    i === currentAgent ? 'bg-[#1434CB] text-white animate-pulse' :
+                                                        'bg-gray-200 text-gray-500'
+                                                    }`}>
+                                                    {i < currentAgent ? '✓' : i + 1}
+                                                </div>
+                                                <div className="flex-1">
+                                                    <div className={`text-sm font-medium ${i <= currentAgent ? 'text-gray-900' : 'text-gray-400'
+                                                        }`}>{agent.name}</div>
+                                                    {i === currentAgent && (
+                                                        <div className="text-xs text-[#1434CB]">{agent.desc}</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
-                                </summary>
-                                <div className="mt-4 grid grid-cols-2 gap-4 p-4 bg-white/5 rounded-lg">
-                                    {[
-                                        { key: 'bin_map', label: 'BIN Map', desc: 'Card BIN to issuer' },
-                                        { key: 'currency_rules', label: 'Currency Rules', desc: 'Decimal places' },
-                                        { key: 'mcc_codes', label: 'MCC Codes', desc: 'Valid codes' },
-                                        { key: 'settlement_ledger', label: 'Settlement', desc: 'For reconciliation' },
-                                    ].map((ref) => (
-                                        <div key={ref.key}>
-                                            <label className="block text-sm font-medium mb-1">{ref.label}</label>
+                                </div>
+                            )}
+
+                            {!uploading && (
+                                <>
+                                    {/* Dataset Upload */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Transaction Dataset (CSV) <span className="text-red-500">*</span>
+                                        </label>
+                                        <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-[#1434CB]/50 transition-colors cursor-pointer">
                                             <input
                                                 type="file"
                                                 accept=".csv"
-                                                onChange={(e) => setReferenceFiles({ ...referenceFiles, [ref.key]: e.target.files?.[0] })}
-                                                className="w-full text-xs bg-white/5 border border-white/20 rounded p-2"
+                                                onChange={(e) => setDatasetFile(e.target.files?.[0] || null)}
+                                                className="hidden"
+                                                id="dataset-upload"
                                             />
-                                            <p className="text-[10px] text-gray-500 mt-1">{ref.desc}</p>
+                                            <label htmlFor="dataset-upload" className="cursor-pointer">
+                                                <div className="text-4xl mb-2">📄</div>
+                                                <div className="text-gray-600">Click to upload or drag and drop</div>
+                                                <div className="text-sm text-gray-400 mt-1">CSV files only</div>
+                                            </label>
                                         </div>
-                                    ))}
-                                </div>
-                            </details>
+                                        {datasetFile && (
+                                            <div className="mt-3 flex items-center gap-2 text-green-600">
+                                                <span>✓</span>
+                                                <span className="text-sm font-medium">{datasetFile.name}</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Dataset Name */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Dataset Name (optional)</label>
+                                        <input
+                                            type="text"
+                                            value={datasetName}
+                                            onChange={(e) => setDatasetName(e.target.value)}
+                                            placeholder="e.g., Q4_2024_Transactions"
+                                            className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1434CB]/20 focus:border-[#1434CB] outline-none transition-all"
+                                        />
+                                    </div>
+
+                                    {/* Reference Files */}
+                                    <details className="group">
+                                        <summary className="cursor-pointer p-4 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 list-none">
+                                            <div className="flex justify-between items-center">
+                                                <span className="font-medium text-gray-700">Reference Data (Optional)</span>
+                                                <span className="text-sm text-gray-400 group-open:hidden">Expand</span>
+                                            </div>
+                                        </summary>
+                                        <div className="mt-4 grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                            {[
+                                                { key: 'bin_map', label: 'BIN Map', desc: 'Card BIN to issuer mapping' },
+                                                { key: 'currency_rules', label: 'Currency Rules', desc: 'Decimal place rules' },
+                                                { key: 'mcc_codes', label: 'MCC Codes', desc: 'Valid merchant codes' },
+                                                { key: 'settlement_ledger', label: 'Settlement Ledger', desc: 'For reconciliation' },
+                                            ].map((ref) => (
+                                                <div key={ref.key}>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">{ref.label}</label>
+                                                    <input
+                                                        type="file"
+                                                        accept=".csv"
+                                                        onChange={(e) => setReferenceFiles({ ...referenceFiles, [ref.key]: e.target.files?.[0] })}
+                                                        className="w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-[#1434CB]/10 file:text-[#1434CB] file:font-medium hover:file:bg-[#1434CB]/20"
+                                                    />
+                                                    <p className="text-xs text-gray-400 mt-1">{ref.desc}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </details>
+                                </>
+                            )}
 
                             {/* Error/Success */}
-                            {error && <div className="p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200">⚠️ {error}</div>}
-                            {success && <div className="p-4 bg-green-500/20 border border-green-500/50 rounded-lg text-green-200">✅ {success}</div>}
+                            {error && (
+                                <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 flex items-center gap-3">
+                                    <span className="text-red-500 text-xl">⚠</span>
+                                    <div>
+                                        <div className="font-medium">Analysis Failed</div>
+                                        <div className="text-sm text-red-600">{error}</div>
+                                    </div>
+                                </div>
+                            )}
+                            {success && (
+                                <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 flex items-center gap-3">
+                                    <span className="text-green-500 text-xl">✓</span>
+                                    <div className="font-medium">{success}</div>
+                                </div>
+                            )}
 
                             {/* Submit Button */}
-                            <button
-                                onClick={handleDatasetUpload}
-                                disabled={uploading || !datasetFile}
-                                className="w-full py-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-                            >
-                                {uploading ? (
-                                    <>
-                                        <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                        </svg>
-                                        Analyzing with 7 agents...
-                                    </>
-                                ) : (
-                                    '🚀 Analyze Dataset'
-                                )}
-                            </button>
+                            {!uploading && (
+                                <button
+                                    onClick={handleDatasetUpload}
+                                    disabled={!datasetFile}
+                                    className="w-full py-4 bg-[#1434CB] hover:bg-[#0C1F7A] text-white rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                >
+                                    Start Analysis
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
             )}
-
-            {/* Footer */}
-            <footer className="bg-slate-900 border-t border-white/10 py-12 px-6">
-                <div className="container mx-auto max-w-5xl">
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-                        <div className="flex items-center gap-4">
-                            <img src="/logo.png" alt="PayGuard DQ" className="w-12 h-12 rounded-xl" />
-                            <div>
-                                <span className="text-xl font-bold">
-                                    <span className="text-blue-400">PayGuard</span> DQ
-                                </span>
-                                <p className="text-gray-500 text-sm">AI-Powered Data Quality for Payments</p>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-6 text-sm text-gray-400">
-                            <span>🤖 Gemini AI</span>
-                            <span>🧠 ML Anomaly Detection</span>
-                            <span className="flex items-center gap-2">
-                                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                                Zero Data Storage
-                            </span>
-                        </div>
-                    </div>
-                    <div className="border-t border-white/10 mt-8 pt-8 text-center text-gray-500 text-sm">
-                        © 2026 PayGuard DQ • Built for VISA Hackathon Finals
-                    </div>
-                </div>
-            </footer>
         </div>
     );
 }

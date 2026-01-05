@@ -16,7 +16,7 @@ def sanitize_for_json(obj: Any) -> Any:
         return [sanitize_for_json(item) for item in obj]
     elif isinstance(obj, np.ndarray):
         return obj.tolist()
-    elif isinstance(obj, (np.bool_, np.bool8)):
+    elif isinstance(obj, (np.bool_,)):
         return bool(obj)
     elif isinstance(obj, (np.integer, np.int64, np.int32)):
         return int(obj)
