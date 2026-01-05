@@ -1,6 +1,8 @@
 """
-Explainer Agent: Generates human-readable narratives and issue summaries.
-Supports both LLM mode (OpenAI-compatible) and deterministic stub mode.
+Explainer Agent: Generates human-readable narratives using GenAI.
+
+Supports Google Gemini API for industry-standard LLM integration,
+with fallback to deterministic stub mode.
 """
 import os
 from typing import Dict, Any, List, Optional
@@ -8,27 +10,51 @@ from datetime import datetime
 
 
 class ExplainerAgent:
-    """Agent responsible for generating explanations and narratives."""
+    """
+    Agent responsible for generating explanations and narratives using GenAI.
+    
+    Uses Google Gemini API for generating:
+    - Executive summaries
+    - Issue explanations
+    - Business impact analysis
+    - Remediation recommendations
+    """
     
     def __init__(self, use_llm: bool = None):
         self.name = "ExplainerAgent"
         
-        # Auto-detect LLM availability
+        # Auto-detect Gemini availability
+        gemini_key = os.getenv("GEMINI_API_KEY", "")
+        openai_key = os.getenv("OPENAI_API_KEY", "")
+        
         if use_llm is None:
-            api_key = os.getenv("OPENAI_API_KEY", "")
-            self.use_llm = bool(api_key and api_key.strip())
+            self.use_llm = bool(gemini_key.strip() or openai_key.strip())
         else:
             self.use_llm = use_llm
         
+        self.client = None
+        self.model = None
+        self.provider = None
+        
         if self.use_llm:
-            try:
-                from openai import OpenAI
-                self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-            except Exception:
-                self.use_llm = False
-                self.client = None
-        else:
-            self.client = None
+            # Try Gemini first
+            if gemini_key.strip():
+                try:
+                    import google.generativeai as genai
+                    genai.configure(api_key=gemini_key)
+                    self.model = genai.GenerativeModel('gemini-1.5-flash')
+                    self.provider = "gemini"
+                except Exception as e:
+                    print(f"Gemini init failed: {e}")
+                    self.use_llm = False
+            # Fallback to OpenAI
+            elif openai_key.strip():
+                try:
+                    from openai import OpenAI
+                    self.client = OpenAI(api_key=openai_key)
+                    self.provider = "openai"
+                except Exception:
+                    self.use_llm = False
     
     def explain(self,
                scoring_result: Dict[str, Any],
@@ -42,254 +68,299 @@ class ExplainerAgent:
         """
         start_time = datetime.now()
         
-        if self.use_llm and self.client:
-            result = self._explain_with_llm(scoring_result, check_results, profile)
+        if self.use_llm:
+            if self.provider == "gemini":
+                result = self._explain_with_gemini(scoring_result, check_results, profile)
+            elif self.provider == "openai":
+                result = self._explain_with_openai(scoring_result, check_results, profile)
+            else:
+                result = self._explain_with_stub(scoring_result, check_results, profile)
         else:
             result = self._explain_with_stub(scoring_result, check_results, profile)
         
         duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
         result["duration_ms"] = duration_ms
-        result["mode"] = "llm" if self.use_llm else "stub"
+        result["mode"] = self.provider if self.use_llm else "stub"
+        result["llm_enabled"] = self.use_llm
         
         return result
     
-    def _explain_with_llm(self,
-                         scoring_result: Dict[str, Any],
-                         check_results: List[Dict[str, Any]],
-                         profile: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate explanations using LLM."""
-        
-        # Prepare aggregated data for LLM (NO RAW DATA)
-        summary_data = {
-            "composite_dqs": scoring_result["composite_dqs"],
-            "dimension_scores": {
-                dim: data["score"] 
-                for dim, data in scoring_result["dimension_scores"].items()
-            },
-            "row_count": profile["row_count"],
-            "column_count": profile["column_count"],
-            "failing_checks": []
-        }
-        
-        for check in check_results:
-            if not check.get("passed", True):
-                summary_data["failing_checks"].append({
-                    "check_id": check["check_id"],
-                    "dimension": check["dimension"],
-                    "severity": check["severity"],
-                    "metrics": check.get("metrics", {})
-                })
-        
-        # Create prompt
-        prompt = f"""You are a data quality expert analyzing payment transaction data.
-
-Dataset Summary:
-- Rows: {summary_data['row_count']}
-- Columns: {summary_data['column_count']}
-- Overall DQS: {summary_data['composite_dqs']}/100
-
-Dimension Scores:
-{self._format_dimension_scores(summary_data['dimension_scores'])}
-
-Failing Checks: {len(summary_data['failing_checks'])}
-
-Generate a concise narrative (2-3 paragraphs) explaining:
-1. Overall data quality assessment
-2. Key issues and their business impact
-3. Priority areas for remediation
-
-Keep it professional and actionable."""
-        
+    def _explain_with_gemini(self,
+                            scoring_result: Dict[str, Any],
+                            check_results: List[Dict[str, Any]],
+                            profile: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate explanations using Google Gemini API."""
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "You are a data quality expert for payment systems."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=500,
-                temperature=0.7
+            # Prepare context for the LLM (only metadata, no raw data)
+            failing_checks = [c for c in check_results if not c.get("passed", True)]
+            
+            prompt = self._build_gemini_prompt(scoring_result, failing_checks, profile)
+            
+            # Call Gemini API with timeout
+            response = self.model.generate_content(
+                prompt,
+                generation_config={
+                    "temperature": 0.3,
+                    "max_output_tokens": 1024,
+                }
             )
             
-            narrative = response.choices[0].message.content
+            if response and response.text:
+                return self._parse_gemini_response(response.text, scoring_result, failing_checks)
+            else:
+                return self._explain_with_stub(scoring_result, check_results, profile)
+                
         except Exception as e:
-            # Fallback to stub if LLM fails
-            narrative = f"LLM generation failed: {str(e)}. Falling back to deterministic mode."
+            print(f"Gemini API error: {e}")
             return self._explain_with_stub(scoring_result, check_results, profile)
+    
+    def _build_gemini_prompt(self, 
+                            scoring_result: Dict[str, Any],
+                            failing_checks: List[Dict[str, Any]],
+                            profile: Dict[str, Any]) -> str:
+        """Build prompt for Gemini API."""
+        composite_score = scoring_result.get("composite_dqs", 0)
+        dimension_scores = scoring_result.get("dimension_scores", {})
         
-        # Generate issue summaries
-        issue_summaries = self._generate_issue_summaries(check_results)
+        # Format dimension scores
+        dim_summary = "\n".join([
+            f"- {dim}: {data.get('score', 0):.1f}/100"
+            for dim, data in dimension_scores.items()
+        ])
         
+        # Format failing checks
+        issues_summary = "\n".join([
+            f"- [{c.get('severity', 'medium').upper()}] {c.get('check_id', 'unknown')}: {c.get('dimension', 'unknown')}"
+            for c in failing_checks[:10]
+        ])
+        
+        return f"""You are a data quality expert analyzing payment transaction data. 
+Generate a professional executive summary for a data quality assessment.
+
+DATASET OVERVIEW:
+- Rows: {profile.get('row_count', 0):,}
+- Columns: {profile.get('column_count', 0)}
+
+QUALITY SCORES:
+- Overall Score: {composite_score:.1f}/100
+{dim_summary}
+
+ISSUES FOUND ({len(failing_checks)} total):
+{issues_summary if issues_summary else "No critical issues found."}
+
+Generate a 2-3 paragraph executive summary that:
+1. States the overall data quality status (Good/Fair/Poor based on score)
+2. Highlights the most critical issues affecting payment processing
+3. Provides actionable recommendations for improvement
+
+Keep it professional and concise. Focus on business impact for payment data.
+"""
+
+    def _parse_gemini_response(self,
+                              response_text: str,
+                              scoring_result: Dict[str, Any],
+                              failing_checks: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Parse Gemini response into structured output."""
         return {
-            "narrative": narrative,
-            "issue_summaries": issue_summaries
+            "summary": response_text.strip(),
+            "issue_summaries": self._generate_issue_summaries(failing_checks),
+            "recommendations": self._extract_recommendations(response_text),
+            "business_impact": self._assess_business_impact(scoring_result),
+            "generated_by": "gemini-1.5-flash"
         }
+    
+    def _explain_with_openai(self,
+                            scoring_result: Dict[str, Any],
+                            check_results: List[Dict[str, Any]],
+                            profile: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate explanations using OpenAI API."""
+        try:
+            failing_checks = [c for c in check_results if not c.get("passed", True)]
+            
+            prompt = self._build_gemini_prompt(scoring_result, failing_checks, profile)
+            
+            response = self.client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=1024
+            )
+            
+            if response.choices:
+                text = response.choices[0].message.content
+                return {
+                    "summary": text.strip(),
+                    "issue_summaries": self._generate_issue_summaries(failing_checks),
+                    "recommendations": self._extract_recommendations(text),
+                    "business_impact": self._assess_business_impact(scoring_result),
+                    "generated_by": "gpt-3.5-turbo"
+                }
+        except Exception as e:
+            print(f"OpenAI API error: {e}")
+        
+        return self._explain_with_stub(scoring_result, check_results, profile)
     
     def _explain_with_stub(self,
                           scoring_result: Dict[str, Any],
                           check_results: List[Dict[str, Any]],
                           profile: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate explanations using deterministic templates."""
+        """Generate explanations using deterministic logic (no LLM)."""
+        composite_score = scoring_result.get("composite_dqs", 0)
+        failing_checks = [c for c in check_results if not c.get("passed", True)]
         
-        composite_dqs = scoring_result["composite_dqs"]
-        dimension_scores = scoring_result["dimension_scores"]
-        
-        # Generate narrative using templates
-        narrative_parts = []
-        
-        # Overall assessment
-        if composite_dqs >= 90:
-            quality_level = "excellent"
-            assessment = "The dataset demonstrates excellent data quality with minimal issues."
-        elif composite_dqs >= 75:
-            quality_level = "good"
-            assessment = "The dataset shows good data quality with some areas requiring attention."
-        elif composite_dqs >= 60:
-            quality_level = "fair"
-            assessment = "The dataset has fair data quality with several issues that need remediation."
+        # Generate deterministic summary
+        if composite_score >= 80:
+            quality_status = "GOOD"
+            summary = f"The dataset demonstrates good data quality with an overall score of {composite_score:.1f}/100. "
+        elif composite_score >= 60:
+            quality_status = "FAIR"
+            summary = f"The dataset shows fair data quality with a score of {composite_score:.1f}/100. Some improvements are recommended. "
         else:
-            quality_level = "poor"
-            assessment = "The dataset exhibits poor data quality with critical issues requiring immediate attention."
+            quality_status = "POOR"
+            summary = f"The dataset has significant data quality issues with a score of {composite_score:.1f}/100. Immediate attention is required. "
         
-        narrative_parts.append(
-            f"**Overall Assessment**: The dataset achieved a Data Quality Score (DQS) of {composite_dqs}/100, "
-            f"indicating {quality_level} quality. {assessment}"
-        )
-        
-        # Dimension analysis
-        failing_dimensions = [
-            (dim, data["score"]) 
-            for dim, data in dimension_scores.items() 
-            if data["score"] < 80
-        ]
-        
-        if failing_dimensions:
-            failing_dimensions.sort(key=lambda x: x[1])  # Sort by score ascending
-            dim_list = ", ".join([f"{dim} ({score:.1f})" for dim, score in failing_dimensions[:3]])
-            narrative_parts.append(
-                f"\n\n**Key Issues**: The primary quality concerns are in {dim_list}. "
-                f"These dimensions show elevated error rates that could impact downstream processing and analytics."
-            )
+        # Add issue context
+        if failing_checks:
+            critical_count = sum(1 for c in failing_checks if c.get("severity") == "critical")
+            high_count = sum(1 for c in failing_checks if c.get("severity") == "high")
+            
+            if critical_count > 0:
+                summary += f"Found {critical_count} critical issues that could impact payment processing integrity. "
+            if high_count > 0:
+                summary += f"Identified {high_count} high-priority issues requiring review. "
+            
+            # List top dimensions affected
+            dimensions = set(c.get("dimension", "unknown") for c in failing_checks)
+            if dimensions:
+                summary += f"Key areas of concern: {', '.join(dimensions)}."
         else:
-            narrative_parts.append(
-                "\n\n**Key Issues**: All quality dimensions meet acceptable thresholds. "
-                "Continue monitoring for any degradation in future batches."
-            )
-        
-        # Remediation priority
-        critical_checks = [c for c in check_results if c.get("severity") == "critical" and not c.get("passed", True)]
-        high_checks = [c for c in check_results if c.get("severity") == "high" and not c.get("passed", True)]
-        
-        if critical_checks:
-            narrative_parts.append(
-                f"\n\n**Priority Actions**: {len(critical_checks)} critical issues require immediate remediation. "
-                f"Focus on {critical_checks[0]['dimension']} dimension first, as it has the highest business impact. "
-                f"Additionally, {len(high_checks)} high-severity issues should be addressed in the next sprint."
-            )
-        elif high_checks:
-            narrative_parts.append(
-                f"\n\n**Priority Actions**: {len(high_checks)} high-severity issues should be addressed. "
-                f"While not critical, these issues could lead to operational inefficiencies if left unresolved."
-            )
-        else:
-            narrative_parts.append(
-                "\n\n**Priority Actions**: No critical or high-severity issues detected. "
-                "Focus on continuous improvement and monitoring of medium/low severity items."
-            )
-        
-        narrative = "".join(narrative_parts)
-        
-        # Generate issue summaries
-        issue_summaries = self._generate_issue_summaries(check_results)
+            summary += "No significant data quality issues were detected in the current analysis."
         
         return {
-            "narrative": narrative,
-            "issue_summaries": issue_summaries
+            "summary": summary,
+            "issue_summaries": self._generate_issue_summaries(failing_checks),
+            "recommendations": self._generate_recommendations(failing_checks),
+            "business_impact": self._assess_business_impact(scoring_result),
+            "generated_by": "deterministic_stub"
         }
     
-    def _generate_issue_summaries(self, check_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Generate structured issue summaries."""
-        
+    def _generate_issue_summaries(self, failing_checks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Generate human-readable summaries for each failing check."""
         summaries = []
         
-        for check in check_results:
-            if not check.get("passed", True):
-                summary = {
-                    "check_id": check["check_id"],
-                    "dimension": check["dimension"],
-                    "severity": check["severity"],
-                    "what": self._describe_what(check),
-                    "where": self._describe_where(check),
-                    "root_cause": self._infer_root_cause(check)
-                }
-                summaries.append(summary)
-        
-        # Sort by severity
-        severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-        summaries.sort(key=lambda x: severity_order.get(x["severity"], 3))
+        for check in failing_checks[:10]:  # Limit to top 10
+            check_id = check.get("check_id", "unknown")
+            severity = check.get("severity", "medium")
+            dimension = check.get("dimension", "unknown")
+            metrics = check.get("metrics", {})
+            
+            # Generate description based on check type
+            description = self._get_check_description(check_id, metrics)
+            
+            summaries.append({
+                "check_id": check_id,
+                "severity": severity,
+                "dimension": dimension,
+                "description": description,
+                "impact": self._get_severity_impact(severity)
+            })
         
         return summaries
     
-    def _describe_what(self, check: Dict[str, Any]) -> str:
-        """Describe what failed."""
-        check_id = check["check_id"]
-        metrics = check.get("metrics", {})
-        
-        templates = {
-            "completeness_null_rates": f"High null rate detected ({metrics.get('overall_null_rate', 0):.1%})",
-            "completeness_required_fields": f"Required fields missing or incomplete",
-            "uniqueness_duplicates": f"Duplicate records found ({metrics.get('overall_duplicate_rate', 0):.1%})",
-            "validity_currency": f"Invalid currency codes ({metrics.get('overall_invalid_rate', 0):.1%})",
-            "validity_country": f"Invalid country codes ({metrics.get('overall_invalid_rate', 0):.1%})",
-            "validity_mcc": f"Invalid MCC codes ({metrics.get('overall_invalid_rate', 0):.1%})",
-            "validity_amount": f"Invalid amounts (negative or outliers)",
-            "consistency_status_settlement": f"Status-settlement inconsistencies ({metrics.get('inconsistent_rate', 0):.1%})",
-            "consistency_currency_decimals": f"Currency decimal mismatches",
-            "consistency_time_ordering": f"Time ordering violations ({metrics.get('misordered_rate', 0):.1%})",
-            "timeliness_event_lag": f"SLA violations ({metrics.get('violation_rate', 0):.1%})",
-            "timeliness_processing_delay": f"Excessive processing delays",
-            "reconciliation_bin": f"BIN reconciliation failures ({1 - metrics.get('match_rate', 1):.1%})",
-            "reconciliation_settlement": f"Settlement reconciliation failures ({1 - metrics.get('overall_reconciliation_rate', 1):.1%})"
+    def _get_check_description(self, check_id: str, metrics: Dict[str, Any]) -> str:
+        """Get human-readable description for a check."""
+        descriptions = {
+            "completeness_null": f"Missing values detected in critical fields. Null rate: {metrics.get('overall_null_rate', 0)*100:.1f}%",
+            "validity_currency": f"Invalid currency codes found. Invalid rate: {metrics.get('overall_invalid_rate', 0)*100:.1f}%",
+            "validity_country": f"Invalid country codes detected in the dataset.",
+            "validity_amount": f"Amount validation issues including negative or extreme values.",
+            "uniqueness_duplicates": f"Duplicate records found in key columns. Duplicate rate: {metrics.get('overall_duplicate_rate', 0)*100:.1f}%",
+            "timeliness_event_lag": f"Data freshness issues detected. Average lag: {metrics.get('avg_lag_hours', 0):.1f} hours.",
+            "ml_numeric_anomalies": f"Statistical anomalies detected in numeric columns using ML analysis.",
+            "ml_row_anomalies": f"Multivariate anomalies detected across multiple fields.",
         }
         
-        return templates.get(check_id, f"Check {check_id} failed")
+        return descriptions.get(check_id, f"Issue detected: {check_id}")
     
-    def _describe_where(self, check: Dict[str, Any]) -> str:
-        """Describe where the issue occurs."""
-        metrics = check.get("metrics", {})
-        
-        failing_columns = metrics.get("failing_columns", [])
-        if failing_columns:
-            if isinstance(failing_columns[0], dict):
-                cols = [fc["column"] for fc in failing_columns[:3]]
-            else:
-                cols = failing_columns[:3]
-            return f"Columns: {', '.join(cols)}"
-        
-        # Check for specific column references
-        for key in ["currency_column", "amount_column", "status_column", "txn_id_column"]:
-            if key in metrics:
-                return f"Column: {metrics[key]}"
-        
-        return "Multiple columns affected"
-    
-    def _infer_root_cause(self, check: Dict[str, Any]) -> str:
-        """Infer probable root cause."""
-        dimension = check["dimension"]
-        check_id = check["check_id"]
-        
-        root_causes = {
-            "completeness": "Upstream data source may be incomplete or extraction process is missing fields",
-            "uniqueness": "Duplicate data ingestion or missing deduplication logic",
-            "validity": "Data transformation errors or missing validation at source",
-            "consistency": "Cross-field validation missing or business logic errors",
-            "timeliness": "Processing delays or batch scheduling issues",
-            "integrity": "Reference data out of sync or missing foreign key validation",
-            "reconciliation": "Data drift between systems or settlement process errors"
+    def _get_severity_impact(self, severity: str) -> str:
+        """Get impact description for severity level."""
+        impacts = {
+            "critical": "May cause payment failures, compliance violations, or financial discrepancies.",
+            "high": "Could lead to transaction delays, reporting errors, or customer impact.",
+            "medium": "May affect data analytics accuracy or operational efficiency.",
+            "low": "Minor issue with limited operational impact."
         }
-        
-        return root_causes.get(dimension, "Unknown root cause")
+        return impacts.get(severity, "Unknown impact level.")
     
-    def _format_dimension_scores(self, scores: Dict[str, float]) -> str:
-        """Format dimension scores for LLM prompt."""
-        return "\n".join([f"- {dim}: {score:.1f}/100" for dim, score in scores.items()])
+    def _generate_recommendations(self, failing_checks: List[Dict[str, Any]]) -> List[str]:
+        """Generate actionable recommendations based on failing checks."""
+        recommendations = []
+        dimensions_seen = set()
+        
+        for check in failing_checks:
+            dimension = check.get("dimension", "unknown")
+            severity = check.get("severity", "medium")
+            
+            if dimension in dimensions_seen:
+                continue
+            dimensions_seen.add(dimension)
+            
+            # Generate dimension-specific recommendations
+            if dimension == "completeness":
+                recommendations.append("Implement mandatory field validation at data ingestion to prevent null values in critical fields.")
+            elif dimension == "validity":
+                recommendations.append("Add reference data validation for currencies, countries, and MCC codes against ISO standards.")
+            elif dimension == "uniqueness":
+                recommendations.append("Enable duplicate detection during batch processing with transaction ID validation.")
+            elif dimension == "timeliness":
+                recommendations.append("Review data pipeline latency and implement real-time monitoring for stale data detection.")
+            elif dimension == "anomaly_detection":
+                recommendations.append("Investigate ML-detected anomalies for potential fraud patterns or data corruption.")
+        
+        if not recommendations:
+            recommendations.append("Continue monitoring data quality metrics for early issue detection.")
+        
+        return recommendations[:5]  # Limit to top 5
+    
+    def _extract_recommendations(self, response_text: str) -> List[str]:
+        """Extract recommendations from LLM response."""
+        # Simple extraction - look for numbered items or bullet points
+        lines = response_text.split('\n')
+        recommendations = []
+        
+        for line in lines:
+            line = line.strip()
+            if line.startswith(('-', '•', '*')) or (line[:2].isdigit() and '.' in line[:3]):
+                clean_line = line.lstrip('-•*0123456789. ')
+                if len(clean_line) > 20:  # Meaningful recommendation
+                    recommendations.append(clean_line)
+        
+        return recommendations[:5] if recommendations else ["Review data quality issues and implement validation controls."]
+    
+    def _assess_business_impact(self, scoring_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Assess business impact based on scoring."""
+        score = scoring_result.get("composite_dqs", 0)
+        
+        if score >= 90:
+            risk_level = "LOW"
+            payment_risk = "Minimal risk to payment processing"
+            compliance_risk = "Compliant with data quality standards"
+        elif score >= 70:
+            risk_level = "MEDIUM"
+            payment_risk = "Some transactions may require manual review"
+            compliance_risk = "Minor compliance gaps may exist"
+        elif score >= 50:
+            risk_level = "HIGH"
+            payment_risk = "Elevated risk of payment failures or errors"
+            compliance_risk = "Significant compliance issues likely"
+        else:
+            risk_level = "CRITICAL"
+            payment_risk = "High likelihood of payment processing failures"
+            compliance_risk = "Major compliance violations expected"
+        
+        return {
+            "risk_level": risk_level,
+            "payment_processing_risk": payment_risk,
+            "compliance_risk": compliance_risk,
+            "score": score
+        }

@@ -12,6 +12,7 @@ from .agents.scoring_agent import ScoringAgent
 from .agents.explainer_agent import ExplainerAgent
 from .agents.remediation_agent import RemediationAgent
 from .agents.test_export_agent import TestExportAgent
+from .agents.anomaly_detection_agent import AnomalyDetectionAgent
 from .utils.hashing import compute_dataset_fingerprint
 from .utils.governance import generate_governance_report
 from .utils.json_utils import sanitize_for_json
@@ -32,6 +33,7 @@ class Orchestrator:
         self.explainer = ExplainerAgent()
         self.remediator = RemediationAgent()
         self.test_exporter = TestExportAgent()
+        self.anomaly_detector = AnomalyDetectionAgent()
     
     async def process_dataset(self,
                              df: pd.DataFrame,
@@ -102,6 +104,16 @@ class Orchestrator:
                                {"total_checks": check_result["total_checks"]})
             self._save_artifact(run_id, ArtifactType.CHECKS, json.dumps(sanitize_for_json(check_results), indent=2))
             
+            # Step 3.5: Anomaly Detection Agent (ML-based)
+            anomaly_result = self.anomaly_detector.detect(df, profile)
+            self._log_agent_step(run_id, "3.5", self.anomaly_detector.name,
+                               {"contamination": anomaly_result.get("contamination", 0.05)},
+                               {"total_anomalies": anomaly_result.get("total_anomalies", 0)})
+            
+            # Merge ML anomaly check results with rule-based checks
+            ml_checks = anomaly_result.get("check_results", [])
+            check_results.extend(ml_checks)
+            
             # Save check results to database
             self._save_check_results(run_id, check_results)
             
@@ -119,8 +131,8 @@ class Orchestrator:
             explainer_result = self.explainer.explain(scoring_result, check_results, profile)
             self._log_agent_step(run_id, 5, self.explainer.name,
                                {"mode": explainer_result["mode"]},
-                               {"narrative_length": len(explainer_result["narrative"])})
-            self._save_artifact(run_id, ArtifactType.NARRATIVE, explainer_result["narrative"])
+                               {"narrative_length": len(explainer_result.get("summary", ""))})
+            self._save_artifact(run_id, ArtifactType.NARRATIVE, explainer_result.get("summary", ""))
             
             # Step 6: Remediation Agent
             remediation_result = self.remediator.generate_remediation(
